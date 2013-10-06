@@ -1,0 +1,209 @@
+<html>
+	<head>
+		<script src="http://cdn.peerjs.com/0.3/peer.min.js"></script>
+		<script src="/socket.io/socket.io.js"></script>
+		<link rel="stylesheet" href="http://code.jquery.com/ui/1.10.3/themes/smoothness/jquery-ui.css" />
+		<script src="http://code.jquery.com/jquery-1.9.1.js"></script>
+		<script src="http://code.jquery.com/ui/1.10.3/jquery-ui.js"></script>
+		<script type="text/javascript">
+		
+		var idx = {'myvideo':0, 'thecanvas':0};
+		var filters = ['grayscale', 'sepia', 'blur', 'opacity', 'brightness', 'contrast', 'hue-rotate',
+		               'hue-rotate2', 'hue-rotate3', 'saturate', 'invert'];
+		var videoElement, canvas, slideVal = 0;
+		
+		function changeFilter(e) {
+			//alert(e);
+		  var el = e.target;
+		  el.className = '';
+		  var effect = filters[idx[e.target.id]++ % filters.length]; // loop through filters.
+		  if (effect) {
+		    if(el === canvas && effect === 'opacity') {
+		      $(canvas).css('-webkit-filter', 'opacity('+(slideVal / 100)+')');
+		    } else {
+		      $(canvas).css('-webkit-filter', '');
+		      el.classList.add(effect);
+		    }
+		  }
+		}	
+			var init = function() {
+			videoElement = document.getElementById('myvideo');
+				/* Get User Media */
+				var my_stream = null;
+				
+				window.URL = window.URL || window.webkitURL || window.mozURL || window.msURL;
+				navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+				if (navigator.getUserMedia) {
+					navigator.getUserMedia({video: true, audio: true}, function(stream) {
+								my_stream = stream;
+								//var videoElement = document.getElementById('myvideo');
+								videoElement.src = window.URL.createObjectURL(stream) || stream;
+								
+								videoElement.play();
+							}, function(err) {
+								console.log('Failed to get local stream' ,err);
+					});
+				}
+
+		
+				/* My WebRTC peer id */
+				var peer_id = null;			
+			
+				/* Socket Server - Socket.io */
+				var socket = io.connect('http://ec2-54-200-31-178.us-west-2.compute.amazonaws.com:8080/');
+			
+				socket.on('connect', function() {
+					console.log("Connected");
+				
+					// When we connect, if we have a peer_id, send it out	
+					if (peer_id != null) {
+						console.log("peer id is not null, sending it");
+						socket.emit("peer_id",peer_id);
+					}
+				});
+
+				// Receive other folks peer ids
+				socket.on('peer_id', function (data) {
+					console.log("Got a new peer: " + data);
+				
+					// Call them with our stream
+					console.log("Calling peer: " + data);						
+					var call = peer.call(data, my_stream);
+
+					call.on('stream', function(remoteStream) {
+						console.log("Got remote stream");
+						document.getElementById('othervideo').src = window.URL.createObjectURL(remoteStream) || remoteStream;
+					});
+				});
+
+			
+				/* WebRTC - Peer.js */
+					
+				// Register for an API Key:	
+				var peer = new Peer({key: '########'});
+
+				// Get an ID from the PeerJS server		
+				peer.on('open', function(id) {
+				  console.log('My peer ID is: ' + id);
+				  peer_id = id;
+			  
+				  // If our socket is connected, send out our peer id here
+				  //if (socket.connected) {
+					console.log("sending out our peer id");
+					socket.emit("peer_id",peer_id);
+				  //}
+				});		
+		
+				
+				peer.on('call', function(incoming_call) {
+					console.log("Got a call!");
+					incoming_call.answer(my_stream); // Answer the call with an A/V stream.
+					incoming_call.on('stream', function(remoteStream) {
+						var ovideoElement = document.createElement('video');
+						console.log(remoteStream);
+						ovideoElement.src = window.URL.createObjectURL(remoteStream) || remoteStream;
+						ovideoElement.className = 'opacity'
+						ovideoElement.style.position = "absolute";
+						ovideoElement.style.top = "100px";
+						ovideoElement.style.left = "100px";
+						ovideoElement.style.z = "1";						
+						document.body.appendChild(ovideoElement);
+						ovideoElement.play();
+					});
+				});			
+			
+			document.querySelector('video').addEventListener('click', changeFilter, false);
+			document.querySelector('canvas').addEventListener('click', changeFilter, false);
+			canvas = document.getElementById('thecanvas');
+			var context = canvas.getContext('2d');
+          /*var cw = Math.floor(canvas.clientWidth / 100);
+        var ch = Math.floor(canvas.clientHeight / 100);
+            canvas.width = cw;
+          canvas.height = ch;*/
+            videoElement.addEventListener('play', function(){
+              console.log(this);
+            draw(this,context);
+            },false);
+			var draw = function(video, context) {
+          //console.log(video);
+          context.drawImage(video,0,0,video.width,video.height);
+          var dataUrl = canvas.toDataURL('image/webp', 1);
+/*           document.getElementById('imagefile').src = dataUrl; */
+          setTimeout(draw,100, video, context);
+          
+        };
+
+        $( "#slider" ).slider({
+          slide: function(e, ui) {
+            slideVal = ui.value;
+            if(filters[idx['thecanvas'] % filters.length -1] === 'opacity') {
+              console.log(slideVal / 100);
+              $(canvas).css('-webkit-filter', 'opacity('+(slideVal / 100)+')');
+            }
+          }
+        });
+     };
+
+		
+		</script>
+
+	<style>
+		video {
+		  width: 307px;
+		  height: 250px;
+		  background: rgba(255,255,255,0.5);
+		  border: 1px solid #ccc;
+		}
+		.grayscale {
+		  +filter: grayscale(1);
+		  -webkit-filter:grayscale(1);
+		}
+		.sepia {
+		  +filter: sepia(1);
+		  -webkit-filter:sepia(1);
+		}
+		.blur {
+		  +filter: blur(10px);
+		  -webkit-filter:blur(10px);
+		}
+		.opacity{
+		  +filter: opacity(.75);
+		  -webkit-filter:opacity(.75);
+		}
+		.brightness{
+		  +filter: brightness(200%);
+		  -webkit-filter:brightness(200%);
+		 } 
+		.contrast{
+		  +filter: contrast(200%);
+		  -webkit-filter:contrast(200%);
+		 } 
+		.hue-rotate{
+		  +filter: hue-rotate(90deg);
+		  -webkit-filter:hue-rotate(90deg);
+		 } 
+		.hue-rotate2{
+		  +filter: hue-rotate(270deg);
+		  -webkit-filter:hue-rotate(270deg);
+		 } 
+		.hue-rotate3{
+		  +filter: hue-rotate(135deg);
+		  -webkit-filter:hue-rotate(135deg);
+		 } 
+		.saturate{
+		  +filter: saturate(200%);
+		  -webkit-filter:saturate(200%);
+		 } 
+		.invert{
+		  +filter: invert(1);
+		  -webkit-filter:invert(1);
+		 } 
+		 </style>
+	</head>
+	<body onload="init()">
+		<video id="myvideo" width="320" height="240" style = "position: absolute; left: 100px; top:100px; z-index: 0;" ></video>
+<!-- 		<img src="" id="imagefile"> -->
+		<canvas id="thecanvas" width="320" height="240" style="position: absolute; left: 100px; top:100px; z-index: 0;"></canvas>
+		<div id="slider" style="width:300px;"></div>
+	</body>
+</html>
